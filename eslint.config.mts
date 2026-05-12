@@ -37,5 +37,6 @@ export default tseslint.config(
 		"versions.json",
 		"main.js",
 		"src/converter/**/*.mjs",
+		"tests/**/*.mjs",
 	]),
 );
