@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "swaggerjson-to-markdown",
+	"name": "Swagger JSON to Markdown",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "Convierte archivos Swagger/OpenAPI JSON a Markdown con estilo Swagger desde Obsidian.",
+	"author": "Oscar Gonzalez Tur",
+	"authorUrl": "https://oscartur.dev/",
+	"fundingUrl": "https://buymeacoffee.com/krontur",
 	"isDesktopOnly": false
 }
