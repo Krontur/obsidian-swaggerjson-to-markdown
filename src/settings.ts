@@ -34,7 +34,7 @@ export class SwaggerJsonToMarkdownSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Swagger JSON to Markdown")
+			.setName("Conversion defaults")
 			.setHeading();
 
 		new Setting(containerEl)
