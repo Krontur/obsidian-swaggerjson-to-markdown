@@ -233,15 +233,45 @@ function preCleanHtml(value) {
 }
 
 function postCleanHtml(value) {
-  return String(value ?? "")
+  const cleaned = String(value ?? "")
     // Avoid empty paragraphs creating strange PDF spacing.
     .replace(/<p>\s*<\/p>/gi, "<br>")
 
     // Avoid too many line breaks.
-    .replace(/(<br>\s*){3,}/gi, "<br><br>")
+    .replace(/(<br>\s*){3,}/gi, "<br><br>");
 
-    // sanitize-html may preserve classes; force our table class again just in case.
-    .replace(/<table(?:\s+class="[^"]*")?>/gi, '<table class="api-table api-description-table">');
+  return annotateDescriptionTables(cleaned);
+}
+
+function annotateDescriptionTables(value) {
+  return String(value ?? "").replace(/<table(?:\s+class="[^"]*")?>([\s\S]*?)<\/table>/gi, (match, tableBody) => {
+    const columnCount = getFirstTableRowColumnCount(tableBody);
+    const classNames = ["api-table", "api-description-table"];
+
+    if (columnCount > 0 && columnCount <= 12) {
+      classNames.push(`api-description-table-cols-${columnCount}`);
+    }
+
+    return `<table class="${classNames.join(" ")}">${tableBody}</table>`;
+  });
+}
+
+function getFirstTableRowColumnCount(tableBody) {
+  const firstRow = String(tableBody ?? "").match(/<tr\b[\s\S]*?<\/tr>/i)?.[0] ?? "";
+  const cells = Array.from(firstRow.matchAll(/<(?:th|td)\b([^>]*)>/gi));
+
+  return cells.reduce((count, cellMatch) => count + getCellColumnSpan(cellMatch[1]), 0);
+}
+
+function getCellColumnSpan(attributesText) {
+  const rawColspan = String(attributesText ?? "").match(/\bcolspan="(\d+)"/i)?.[1];
+  const colspan = Number(rawColspan);
+
+  if (!Number.isInteger(colspan) || colspan < 1 || colspan > 20) {
+    return 1;
+  }
+
+  return colspan;
 }
 
 function transformTableCellTag(tagName) {

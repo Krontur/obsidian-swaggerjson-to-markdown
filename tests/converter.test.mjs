@@ -5,6 +5,7 @@ import { validateOpenApiDocument, validateFilterCombination } from "../src/conve
 import { generateMarkdown } from "../src/converter/renderer/markdown-generator.mjs";
 import { WarningCollector } from "../src/converter/shared/warnings.mjs";
 import { buildExample, formatExample } from "../src/converter/core/example-generator.mjs";
+import { renderRichText } from "../src/converter/renderer/rich-text-renderer.mjs";
 
 const DEFAULT_OPTIONS = {
   mode: "full",
@@ -286,6 +287,14 @@ test("rich HTML descriptions do not escape structural wrapper or heading tags", 
   assert.doesNotMatch(markdown, /&lt;div&gt;/);
   assert.doesNotMatch(markdown, /&lt;h2&gt;/);
   assert.doesNotMatch(markdown, /<h2>/);
+});
+
+test("rich HTML description tables include column count classes without CSS :has selectors", () => {
+  const fiveColumnTable = renderRichText("<table><tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr></table>");
+  const sixColumnTable = renderRichText("<table><tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>Restriction</th></tr></table>");
+
+  assert.match(fiveColumnTable, /class="api-table api-description-table api-description-table-cols-5"/);
+  assert.match(sixColumnTable, /class="api-table api-description-table api-description-table-cols-6"/);
 });
 
 test("schema property direct self references render as recursive links", () => {

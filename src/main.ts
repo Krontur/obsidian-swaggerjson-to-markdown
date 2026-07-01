@@ -313,7 +313,6 @@ class ConversionOptionsModal extends Modal {
 			.addSlider((slider) => slider
 				.setLimits(1, 5, 1)
 				.setValue(this.request.headingOffset)
-				.setDynamicTooltip()
 				.onChange((value) => {
 					this.request.headingOffset = value;
 				}));

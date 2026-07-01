@@ -35,14 +35,14 @@ type WarningCollectorInstance = {
 };
 
 type WarningCollectorConstructor = new () => WarningCollectorInstance;
-const createWarnings = WarningCollector as WarningCollectorConstructor;
-const validateDocument = validateOpenApiDocument as (spec: unknown, warnings: WarningCollectorInstance) => void;
-const validateFilters = validateFilterCombination as (options: ConversionOptions, warnings: WarningCollectorInstance) => void;
-const renderMarkdown = generateMarkdown as (spec: unknown, options: ConversionOptions, warnings: WarningCollectorInstance) => string;
+const createWarnings = WarningCollector as unknown as WarningCollectorConstructor;
+const validateDocument = validateOpenApiDocument as unknown as (spec: unknown, warnings: WarningCollectorInstance) => void;
+const validateFilters = validateFilterCombination as unknown as (options: ConversionOptions, warnings: WarningCollectorInstance) => void;
+const renderMarkdown = generateMarkdown as unknown as (spec: unknown, options: ConversionOptions, warnings: WarningCollectorInstance) => string;
 
 export function parseOpenApiJson(source: string): unknown {
 	try {
-		return JSON.parse(source);
+		return JSON.parse(source) as unknown;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(`Invalid JSON: ${message}`);
@@ -63,7 +63,7 @@ export function convertOpenApiToMarkdown(spec: unknown, options: ConversionOptio
 export function listTags(spec: unknown): string[] {
 	if (!isRecord(spec)) return [];
 
-	const declaredTags = Array.isArray(spec.tags)
+	const declaredTags = isUnknownArray(spec.tags)
 		? spec.tags
 			.map((tag) => isRecord(tag) ? tag.name : null)
 			.filter((tag): tag is string => typeof tag === "string" && tag.length > 0)
@@ -86,7 +86,7 @@ export function listOperations(spec: unknown): OperationSummary[] {
 			if (!isRecord(operation)) continue;
 
 			const operationId = typeof operation.operationId === "string" ? operation.operationId : null;
-			const tags = Array.isArray(operation.tags)
+			const tags = isUnknownArray(operation.tags)
 				? operation.tags.filter((tag): tag is string => typeof tag === "string")
 				: [];
 			const summary = typeof operation.summary === "string" ? operation.summary : null;
@@ -106,5 +106,9 @@ export function listOperations(spec: unknown): OperationSummary[] {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+	return Boolean(value) && typeof value === "object" && !isUnknownArray(value);
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+	return Array.isArray(value);
 }
