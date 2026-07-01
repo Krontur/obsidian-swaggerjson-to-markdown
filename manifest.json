@@ -1,7 +1,7 @@
 {
 	"id": "swaggerjson-to-markdown",
 	"name": "Swagger JSON to Markdown",
-	"version": "1.0.3",
+	"version": "1.1.0",
 	"minAppVersion": "1.4.0",
 	"description": "Convert Swagger/OpenAPI JSON files to Swagger-style Markdown.",
 	"author": "Oscar Gonzalez Tur",
