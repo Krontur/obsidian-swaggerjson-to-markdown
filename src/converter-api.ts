@@ -27,6 +27,8 @@ export interface OperationSummary {
 	tags: string[];
 }
 
+const HTTP_METHODS = ["get", "post", "put", "delete", "patch", "options", "head"] as const;
+
 type WarningCollectorInstance = {
 	items: string[];
 	add(message: string): void;
@@ -63,25 +65,42 @@ export function convertOpenApiToMarkdown(spec: unknown, options: ConversionOptio
 export function listTags(spec: unknown): string[] {
 	if (!isRecord(spec)) return [];
 
-	const declaredTags = isUnknownArray(spec.tags)
-		? spec.tags
-			.map((tag) => isRecord(tag) ? tag.name : null)
-			.filter((tag): tag is string => typeof tag === "string" && tag.length > 0)
-		: [];
+	const tags = new Set<string>();
+	const declaredTags = spec.tags;
 
-	return [...new Set([...declaredTags, ...listOperations(spec).flatMap((operation) => operation.tags)])].sort((a, b) => a.localeCompare(b));
+	if (isUnknownArray(declaredTags)) {
+		for (const tag of declaredTags) {
+			if (!isRecord(tag) || typeof tag.name !== "string" || tag.name.length === 0) {
+				continue;
+			}
+
+			tags.add(tag.name);
+		}
+	}
+
+	for (const operation of listOperations(spec)) {
+		for (const tag of operation.tags) {
+			tags.add(tag);
+		}
+	}
+
+	return Array.from(tags).sort(compareStrings);
 }
 
 export function listOperations(spec: unknown): OperationSummary[] {
-	if (!isRecord(spec) || !isRecord(spec.paths)) return [];
+	if (!isRecord(spec)) return [];
 
-	const methods = ["get", "post", "put", "delete", "patch", "options", "head"];
+	const paths = spec.paths;
+
+	if (!isRecord(paths)) return [];
+
 	const operations: OperationSummary[] = [];
+	const pathEntries: Array<[string, unknown]> = Object.entries(paths);
 
-	for (const [path, pathItem] of Object.entries(spec.paths)) {
+	for (const [path, pathItem] of pathEntries) {
 		if (!isRecord(pathItem)) continue;
 
-		for (const method of methods) {
+		for (const method of HTTP_METHODS) {
 			const operation = pathItem[method];
 			if (!isRecord(operation)) continue;
 
@@ -103,6 +122,10 @@ export function listOperations(spec: unknown): OperationSummary[] {
 	}
 
 	return operations;
+}
+
+function compareStrings(left: string, right: string): number {
+	return left.localeCompare(right);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
