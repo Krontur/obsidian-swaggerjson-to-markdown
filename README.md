@@ -18,11 +18,13 @@ The goal is to generate API documentation that feels close to Swagger UI, but wo
 - Can disable Markdown headings and use HTML title blocks instead.
 - Generates sections for API information, servers, endpoints, parameters, request bodies, responses, examples, and schemas.
 - Keeps controlled HTML blocks with `api-*` classes so the bundled plugin CSS can render a Swagger-like layout.
-- Sanitizes rich HTML found in OpenAPI `description` fields, including tables, lists, `code`, `tt`, links, and line breaks.
+- Sanitizes rich HTML found in OpenAPI `description` fields, including headings, tables, lists, `code`, `tt`, links, and line breaks.
+- Converts description headings such as `<h2>` into plugin-styled heading blocks so they render consistently in Obsidian and PDF exports.
+- Extracts embedded HTML or Markdown tables from schema property descriptions and renders them as full-width blocks below the schema table.
 - Renders named `examples` from request bodies, responses, and parameters.
 - Renders details for every response status code, not only the first one.
 - Emits examples as fenced Markdown code blocks such as `json`, `xml`, or `text`.
-- Resolves internal `$ref` values and reports warnings for unresolved internal, external, or remote references.
+- Resolves internal `$ref` values, detects recursive schema references, and reports warnings for unresolved internal, external, or remote references.
 
 ## Installation
 
@@ -151,6 +153,8 @@ For each operation, the output includes static documentation equivalent to the u
 - Response model/schema.
 - Global schemas in full mode.
 
+For recursive schemas, the generator avoids infinite expansion. If a property points back to a schema already in the current reference branch, it is rendered as a schema link with `Recursive reference.` in the description cell.
+
 Interactive Swagger UI controls are intentionally not generated:
 
 - `Try it out`
@@ -182,6 +186,7 @@ In Obsidian and PDF exports, XML/JSON examples remain readable as code.
 
 OpenAPI descriptions sometimes contain HTML. The plugin sanitizes this HTML and keeps useful content such as:
 
+- structural headings
 - paragraphs
 - line breaks
 - lists
@@ -190,7 +195,11 @@ OpenAPI descriptions sometimes contain HTML. The plugin sanitizes this HTML and 
 - safe `http`, `https`, and `mailto` links
 - `colspan` and `rowspan` in tables
 
-Description tables receive the `api-description-table` class. The bundled CSS keeps them PDF-friendly with fixed layout, full width, wrapping, and smaller print sizing.
+Unsupported visual wrappers and unsafe tags are removed while preserving useful text. Tags such as `<h1>` through `<h6>` are transformed into controlled `api-rich-heading` blocks instead of being escaped into visible text.
+
+Description tables receive the `api-description-table` class. The bundled CSS keeps them PDF-friendly with fixed layout, full width, wrapping, smaller print sizing, and column widths that handle both five-column and six-column description tables. The layout avoids horizontal scrolling because generated documents are intended to work as static PDF exports.
+
+When a schema property description contains an embedded table, the table is extracted out of the main properties table. The property row keeps a short description such as `Status code. See table below.`, and the extracted table is rendered below the schema as its own block. This avoids rendering a table inside another table cell.
 
 ## CSS in Obsidian
 
@@ -280,6 +289,8 @@ Warnings do not stop generation. They are reported in the Obsidian developer con
 - remote URL `$ref`;
 - unexpected Swagger/OpenAPI version values.
 
+Recursive internal `$ref` values are not warnings. They are expected in some OpenAPI documents and are rendered as finite links back to the referenced schema.
+
 ## Known Limitations
 
 - External file `$ref` values are not resolved.
@@ -313,6 +324,20 @@ Use **Better Export PDF** and check that:
 ### XML Examples Show `&lt;` and `&gt;`
 
 The current generator emits examples as fenced code blocks, so XML should render as code rather than escaped HTML. Regenerate the document and check that the source example is declared as an OpenAPI example.
+
+### HTML Tags Appear as Text
+
+Regenerate the Markdown file after updating the plugin. Older generated notes may already contain escaped HTML from a previous plugin version, such as visible `<div>` or `<h2>` text.
+
+In newly generated files, rich description headings are emitted as `api-rich-heading` blocks and should render in Reading View or rendered Markdown mode. If tags still appear as text, check that:
+
+- the latest `main.js` was copied into the vault plugin folder;
+- the generated note was recreated, not only reopened;
+- you are viewing the note in Reading View or rendered Markdown mode.
+
+### Description Tables Look Too Narrow
+
+Copy the latest `styles.css` into the vault plugin folder and reload Obsidian. The table layout is controlled by CSS, especially for large description tables intended for PDF export.
 
 ### There Are Unresolved `$ref` Warnings
 
