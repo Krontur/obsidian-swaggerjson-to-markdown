@@ -144,6 +144,10 @@ function convert(spec, options = {}) {
   };
 }
 
+function getSchemaPropertyRow(markdown, propertyName) {
+  return markdown.match(new RegExp(`<tr><td><code>${propertyName}<\\/code><\\/td>[\\s\\S]*?<\\/tr>`))?.[0] ?? "";
+}
+
 test("full mode renders a complete Swagger-style Obsidian document", () => {
   const { markdown, warnings } = convert(createSpec());
 
@@ -270,6 +274,89 @@ test("schema property descriptions without tables render normally", () => {
   assert.match(codeRow, /Status code with <strong>normal HTML<\/strong>\./);
   assert.doesNotMatch(codeRow, /See table below/);
   assert.doesNotMatch(markdown, /#### `code` values/);
+});
+
+test("rich HTML descriptions do not escape structural wrapper or heading tags", () => {
+  const spec = createSpec();
+  spec.info.description = "<div><h2>Purpose and functionality</h2><p>MyLINK SMS API content.</p></div>";
+
+  const { markdown } = convert(spec);
+
+  assert.match(markdown, /<div><div class="api-rich-heading api-rich-heading-2">Purpose and functionality<\/div><p>MyLINK SMS API content\.<\/p><\/div>/);
+  assert.doesNotMatch(markdown, /&lt;div&gt;/);
+  assert.doesNotMatch(markdown, /&lt;h2&gt;/);
+  assert.doesNotMatch(markdown, /<h2>/);
+});
+
+test("schema property direct self references render as recursive links", () => {
+  const spec = createSpec();
+  spec.components.schemas.Media = {
+    type: "object",
+    properties: {
+      thumbnail: { $ref: "#/components/schemas/Media" }
+    }
+  };
+
+  const { markdown } = convert(spec);
+  const thumbnailRow = getSchemaPropertyRow(markdown, "thumbnail");
+
+  assert.match(thumbnailRow, /href="#media"/);
+  assert.match(thumbnailRow, /<code>Media<\/code>/);
+  assert.match(thumbnailRow, /Recursive reference\./);
+  assert.match(markdown, /"\$ref": "Media"/);
+});
+
+test("schema property indirect reference cycles render as recursive links", () => {
+  const spec = createSpec();
+  spec.components.schemas.A = {
+    type: "object",
+    properties: {
+      child: { $ref: "#/components/schemas/B" }
+    }
+  };
+  spec.components.schemas.B = {
+    type: "object",
+    properties: {
+      parent: { $ref: "#/components/schemas/A" }
+    }
+  };
+
+  const { markdown } = convert(spec);
+  const childRow = getSchemaPropertyRow(markdown, "child");
+  const parentRow = getSchemaPropertyRow(markdown, "parent");
+
+  assert.match(childRow, /href="#b"/);
+  assert.match(childRow, /Recursive reference\./);
+  assert.match(parentRow, /href="#a"/);
+  assert.match(parentRow, /Recursive reference\./);
+  assert.match(markdown, /"\$ref": "A"/);
+});
+
+test("schema property repeated non-recursive refs are not treated as cycles", () => {
+  const spec = createSpec();
+  spec.components.schemas.Shared = {
+    type: "object",
+    description: "Shared value.",
+    properties: {
+      id: { type: "string" }
+    }
+  };
+  spec.components.schemas.Container = {
+    type: "object",
+    properties: {
+      first: { $ref: "#/components/schemas/Shared" },
+      second: { $ref: "#/components/schemas/Shared" }
+    }
+  };
+
+  const { markdown } = convert(spec);
+  const firstRow = getSchemaPropertyRow(markdown, "first");
+  const secondRow = getSchemaPropertyRow(markdown, "second");
+
+  assert.match(firstRow, /<code>Shared<\/code>/);
+  assert.match(secondRow, /<code>Shared<\/code>/);
+  assert.doesNotMatch(firstRow, /Recursive reference\./);
+  assert.doesNotMatch(secondRow, /Recursive reference\./);
 });
 
 test("fragment mode can filter by operationId", () => {

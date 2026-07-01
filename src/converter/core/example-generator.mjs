@@ -1,5 +1,7 @@
-import { resolveRef } from "./ref-resolver.mjs";
+import { extractRefName, normalizeRef, resolveRef } from "./ref-resolver.mjs";
 import { normalizeComposedSchema, getSchemaDisplayType } from "./schema-normalizer.mjs";
+
+const MAX_REF_DEPTH = 50;
 
 export function getMediaTypeExample(mediaType, context) {
   if (!mediaType) return undefined;
@@ -13,20 +15,47 @@ export function getMediaTypeExample(mediaType, context) {
   return undefined;
 }
 
-export function buildExample(schema, context) {
-  const resolved = normalizeComposedSchema(resolveRef(schema, context), context);
+export function buildExample(schema, context, state = {}) {
+  if ((state.depth ?? 0) > MAX_REF_DEPTH) {
+    return {};
+  }
+
+  if (schema?.$ref) {
+    const ref = normalizeRef(schema.$ref);
+
+    if ((state.refStack ?? []).includes(ref)) {
+      return { $ref: extractRefName(ref) };
+    }
+
+    const resolvedRef = resolveRef(schema, context);
+
+    if (resolvedRef === schema) {
+      return {};
+    }
+
+    return buildExample(resolvedRef, context, {
+      refStack: [...(state.refStack ?? []), ref],
+      depth: (state.depth ?? 0) + 1
+    });
+  }
+
+  const nextState = {
+    refStack: state.refStack ?? [],
+    depth: (state.depth ?? 0) + 1
+  };
+  const resolved = normalizeComposedSchema(schema, context, state);
   if (!resolved) return undefined;
   if (resolved.example !== undefined) return resolved.example;
   if (resolved.default !== undefined) return resolved.default;
   if (resolved.enum?.length) return resolved.enum[0];
-  if (resolved.oneOf?.length) return buildExample(resolved.oneOf[0], context);
-  if (resolved.anyOf?.length) return buildExample(resolved.anyOf[0], context);
+  if (resolved.oneOf?.length) return buildExample(resolved.oneOf[0], context, nextState);
+  if (resolved.anyOf?.length) return buildExample(resolved.anyOf[0], context, nextState);
   const type = getSchemaDisplayType(resolved, context);
-  if (resolved.type === "array") return [buildExample(resolved.items ?? {}, context)];
+  if (resolved.type === "array") return [buildExample(resolved.items ?? {}, context, nextState)];
   if (resolved.type === "object" || resolved.properties || resolved.additionalProperties) {
     const result = {};
-    for (const [k, v] of Object.entries(resolved.properties ?? {})) result[k] = buildExample(v, context);
-    if (!Object.keys(result).length && resolved.additionalProperties) result.additionalProperty = buildExample(resolved.additionalProperties === true ? { type: "string" } : resolved.additionalProperties, context);
+    for (const [k, v] of Object.entries(resolved.properties ?? {})) result[k] = buildExample(v, context, nextState);
+    if (!Object.keys(result).length && resolved.additionalProperties) result.additionalProperty = buildExample(resolved.additionalProperties === true ? { type: "string" } : resolved.additionalProperties, context, nextState);
     return result;
   }
   if (type.startsWith("integer") || type.startsWith("number")) return 0;

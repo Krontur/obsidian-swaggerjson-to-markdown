@@ -3,7 +3,14 @@ import { escapeHtml, escapeHtmlAttribute } from "./html-renderer.mjs";
 
 const ALLOWED_TAGS = [
   "p",
+  "div",
   "br",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
   "ul",
   "ol",
   "li",
@@ -26,6 +33,7 @@ const ALLOWED_TAGS = [
 
 const ALLOWED_ATTRIBUTES = {
   a: ["href", "title"],
+  div: ["class"],
   table: ["class"],
   th: ["colspan", "rowspan"],
   td: ["colspan", "rowspan"],
@@ -158,13 +166,19 @@ function sanitizeHtmlDescription(value) {
 
     allowedSchemes: ["http", "https", "mailto"],
 
-    disallowedTagsMode: "escape",
+    disallowedTagsMode: "discard",
 
     transformTags: {
       a: transformLinkTag,
       tt: "code",
       b: "strong",
       i: "em",
+      h1: transformHeadingTag(1),
+      h2: transformHeadingTag(2),
+      h3: transformHeadingTag(3),
+      h4: transformHeadingTag(4),
+      h5: transformHeadingTag(5),
+      h6: transformHeadingTag(6),
 
       table: sanitizeHtml.simpleTransform("table", {
         class: "api-table api-description-table"
@@ -250,6 +264,12 @@ function transformTableCellTag(tagName) {
       attribs: cleanAttributes
     };
   };
+}
+
+function transformHeadingTag(level) {
+  return sanitizeHtml.simpleTransform("div", {
+    class: `api-rich-heading api-rich-heading-${level}`
+  });
 }
 
 function extractSafeNumberAttribute(attribs, name) {

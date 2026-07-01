@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-swaggerjson-to-markdown",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Obsidian plugin to convert Swagger/OpenAPI JSON files into Swagger-like Markdown.",
 	"main": "main.js",
 	"type": "module",
