@@ -95,9 +95,9 @@ export function listOperations(spec: unknown): OperationSummary[] {
 	if (!isRecord(paths)) return [];
 
 	const operations: OperationSummary[] = [];
-	const pathEntries: Array<[string, unknown]> = Object.entries(paths);
 
-	for (const [path, pathItem] of pathEntries) {
+	for (const path of Object.keys(paths)) {
+		const pathItem = getRecordValue(paths, path);
 		if (!isRecord(pathItem)) continue;
 
 		for (const method of HTTP_METHODS) {
@@ -130,6 +130,10 @@ function compareStrings(left: string, right: string): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !isUnknownArray(value);
+}
+
+function getRecordValue(record: Record<string, unknown>, key: string): unknown {
+	return record[key];
 }
 
 function isUnknownArray(value: unknown): value is unknown[] {
