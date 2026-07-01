@@ -84,6 +84,47 @@ export function getPlainDescriptionForTable(value) {
   return plain;
 }
 
+export function extractDescriptionTables(value) {
+  if (value === null || value === undefined || value === "") {
+    return {
+      inlineDescription: "none",
+      tables: []
+    };
+  }
+
+  const raw = String(value);
+  const htmlTables = [];
+  const withoutHtmlTables = raw.replace(/<table\b[\s\S]*?<\/table>/gi, (tableHtml) => {
+    const markdownTable = convertHtmlTableToMarkdown(tableHtml);
+    const extractedTable = markdownTable || sanitizeHtmlDescription(tableHtml);
+
+    if (extractedTable) {
+      htmlTables.push(extractedTable);
+    }
+
+    return "\n";
+  });
+  const markdownExtraction = extractMarkdownTables(withoutHtmlTables);
+  const tables = [...htmlTables, ...markdownExtraction.tables];
+
+  if (!tables.length) {
+    return {
+      inlineDescription: value,
+      tables
+    };
+  }
+
+  const plain = stripHtml(markdownExtraction.text);
+  const inlineDescription = plain
+    ? `${ensureSentence(plain)} See table below.`
+    : "See table below.";
+
+  return {
+    inlineDescription,
+    tables
+  };
+}
+
 export function stripHtml(value) {
   return String(value ?? "")
     .replace(/\r\n/g, "\n")
@@ -243,4 +284,167 @@ function transformLinkTag(tagNameFromParser, attribs) {
     tagName: "a",
     attribs: cleanAttributes
   };
+}
+
+function convertHtmlTableToMarkdown(value) {
+  const rows = Array.from(String(value ?? "").matchAll(/<tr\b[\s\S]*?<\/tr>/gi), ([rowHtml]) => {
+    const cells = Array.from(rowHtml.matchAll(/<(th|td)\b[\s\S]*?>([\s\S]*?)<\/\1>/gi), (match) => ({
+      tagName: match[1].toLowerCase(),
+      text: normalizeMarkdownTableCell(match[2])
+    }));
+
+    return cells;
+  }).filter((row) => row.length);
+
+  if (!rows.length) {
+    return "";
+  }
+
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  const header = padMarkdownTableRow(rows[0].map((cell) => cell.text), columnCount);
+  const bodyRows = rows.slice(1).map((row) => padMarkdownTableRow(row.map((cell) => cell.text), columnCount));
+
+  if (!header.some(Boolean)) {
+    return "";
+  }
+
+  const separator = header.map((unused, index) => isNumericMarkdownColumn(bodyRows, index) ? "---:" : "---");
+  return renderMarkdownTableRows([header, separator, ...bodyRows]);
+}
+
+function extractMarkdownTables(value) {
+  const lines = String(value ?? "").replace(/\r\n/g, "\n").split("\n");
+  const textLines = [];
+  const tables = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!isMarkdownTableStart(lines, index)) {
+      textLines.push(lines[index]);
+      continue;
+    }
+
+    const tableLines = [lines[index], lines[index + 1]];
+    index += 2;
+
+    while (index < lines.length && isMarkdownTableRow(lines[index])) {
+      tableLines.push(lines[index]);
+      index += 1;
+    }
+
+    index -= 1;
+
+    const normalizedTable = normalizeMarkdownTable(tableLines);
+
+    if (normalizedTable) {
+      tables.push(normalizedTable);
+    }
+
+    textLines.push("");
+  }
+
+  return {
+    text: textLines.join("\n"),
+    tables
+  };
+}
+
+function normalizeMarkdownTable(lines) {
+  const rows = lines.map(parseMarkdownTableRow).filter((row) => row.length);
+
+  if (rows.length < 2) {
+    return "";
+  }
+
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  const header = padMarkdownTableRow(rows[0], columnCount);
+  const separator = padMarkdownTableRow(rows[1], columnCount).map((cell) => normalizeMarkdownSeparatorCell(cell));
+  const bodyRows = rows.slice(2).map((row) => padMarkdownTableRow(row, columnCount));
+
+  return renderMarkdownTableRows([header, separator, ...bodyRows]);
+}
+
+function renderMarkdownTableRows(rows) {
+  return rows
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n");
+}
+
+function parseMarkdownTableRow(line) {
+  return String(line ?? "")
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map(normalizeMarkdownTableCell);
+}
+
+function padMarkdownTableRow(row, columnCount) {
+  const padded = [...row];
+
+  while (padded.length < columnCount) {
+    padded.push("");
+  }
+
+  return padded.slice(0, columnCount);
+}
+
+function normalizeMarkdownTableCell(value) {
+  return stripHtml(value)
+    .replace(/\|/g, "\\|")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeMarkdownSeparatorCell(value) {
+  const cell = String(value ?? "").trim();
+
+  if (/^:-+:$/.test(cell)) {
+    return ":---:";
+  }
+
+  if (/^-+:$/.test(cell)) {
+    return "---:";
+  }
+
+  if (/^:-+$/.test(cell)) {
+    return ":---";
+  }
+
+  return "---";
+}
+
+function isMarkdownTableStart(lines, index) {
+  return (
+    isMarkdownTableRow(lines[index]) &&
+    index + 1 < lines.length &&
+    isMarkdownTableSeparator(lines[index + 1])
+  );
+}
+
+function isMarkdownTableRow(line) {
+  return /\|/.test(String(line ?? "")) && String(line ?? "").trim() !== "";
+}
+
+function isMarkdownTableSeparator(line) {
+  const cells = parseMarkdownTableRow(line);
+
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function isNumericMarkdownColumn(rows, index) {
+  const values = rows
+    .map((row) => row[index])
+    .filter((cell) => cell !== undefined && cell !== "");
+
+  return values.length > 0 && values.every((cell) => /^-?\d+(?:\.\d+)?$/.test(cell));
+}
+
+function ensureSentence(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  return /[.!?]$/.test(text) ? text : `${text}.`;
 }

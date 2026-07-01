@@ -7,7 +7,7 @@ import {
   renderSemanticHeading,
   renderTable
 } from "./html-renderer.mjs";
-import { renderDescriptionBlock, renderRichText } from "./rich-text-renderer.mjs";
+import { extractDescriptionTables, renderDescriptionBlock, renderRichText } from "./rich-text-renderer.mjs";
 
 export function renderSchemas(context, renderMode) {
   const schemas = getSchemas(context.spec);
@@ -85,18 +85,46 @@ export function renderSchemaPropertiesTable(context, schema) {
     ].join("\n");
   }
 
-  const rows = Object.entries(properties).map(([propertyName, propertySchema]) => {
+  const propertyEntries = Object.entries(properties).map(([propertyName, propertySchema]) => {
     const resolvedProperty = normalizeComposedSchema(propertySchema, context) ?? {};
+    const descriptionDetails = extractDescriptionTables(resolvedProperty.description ?? "none");
 
+    return {
+      propertyName,
+      propertySchema,
+      descriptionDetails
+    };
+  });
+
+  const rows = propertyEntries.map(({ propertyName, propertySchema, descriptionDetails }) => {
     return [
       `<code>${escapeHtml(propertyName)}</code>`,
       `<code>${escapeHtml(formatSchemaType(propertySchema, context))}</code>`,
       required.has(propertyName) ? `<span class="api-required">yes</span>` : "no",
-      renderRichText(resolvedProperty.description ?? "none")
+      renderRichText(descriptionDetails.inlineDescription)
     ];
   });
 
-  return renderTable(["Property", "Type", "Required", "Description"], rows, "api-table api-schema-table") + "\n";
+  const detailBlocks = propertyEntries
+    .map(({ propertyName, descriptionDetails }) => {
+      if (!descriptionDetails.tables.length) {
+        return "";
+      }
+
+      return [
+        renderSemanticHeading(context, "section", `\`${propertyName}\` values`, "api-property-values-title"),
+        "",
+        descriptionDetails.tables.join("\n\n")
+      ].join("\n");
+    })
+    .filter(Boolean);
+
+  return [
+    renderTable(["Property", "Type", "Required", "Description"], rows, "api-table api-schema-table"),
+    "",
+    ...detailBlocks,
+    ""
+  ].join("\n");
 }
 
 function getSchemas(spec) {

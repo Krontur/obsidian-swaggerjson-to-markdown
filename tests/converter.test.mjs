@@ -180,6 +180,98 @@ test("fragment mode can filter by tag and omits unrelated operations and global 
   assert.doesNotMatch(markdown, /## Schemas/);
 });
 
+test("schema property descriptions extract embedded HTML tables below the properties table", () => {
+  const spec = createSpec();
+  spec.components.schemas.DeliveryStatus = {
+    type: "object",
+    properties: {
+      code: {
+        type: "integer",
+        format: "int32",
+        description: `Status code
+          <table class="legacy" style="width: 100%">
+            <thead>
+              <tr>
+                <th width="10%">Code</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Status Group</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td><span class="dot accepted"></span>Accepted</td>
+                <td>Initial status indicating message is accepted for processing.</td>
+                <td>Accepted</td>
+              </tr>
+            </tbody>
+          </table>`
+      }
+    }
+  };
+
+  const { markdown } = convert(spec);
+  const codeRow = markdown.match(/<tr><td><code>code<\/code><\/td>[\s\S]*?<\/tr>/)?.[0];
+
+  assert.ok(codeRow);
+  assert.match(codeRow, /Status code\. See table below\./);
+  assert.doesNotMatch(codeRow, /<table/i);
+  assert.match(markdown, /#### `code` values/);
+  assert.match(markdown, /\| Code \| Name \| Description \| Status Group \|/);
+  assert.match(markdown, /\| 1 \| Accepted \| Initial status indicating message is accepted for processing\. \| Accepted \|/);
+});
+
+test("schema property descriptions extract embedded Markdown tables below the properties table", () => {
+  const spec = createSpec();
+  spec.components.schemas.DeliveryStatus = {
+    type: "object",
+    properties: {
+      code: {
+        type: "integer",
+        format: "int32",
+        description: `Status code
+
+| Code | Name |
+|---:|---|
+| 2 | Rejected |`
+      }
+    }
+  };
+
+  const { markdown } = convert(spec);
+  const codeRow = markdown.match(/<tr><td><code>code<\/code><\/td>[\s\S]*?<\/tr>/)?.[0];
+
+  assert.ok(codeRow);
+  assert.match(codeRow, /Status code\. See table below\./);
+  assert.doesNotMatch(codeRow, /\| Code \| Name \|/);
+  assert.match(markdown, /#### `code` values/);
+  assert.match(markdown, /\| Code \| Name \|/);
+  assert.match(markdown, /\| 2 \| Rejected \|/);
+});
+
+test("schema property descriptions without tables render normally", () => {
+  const spec = createSpec();
+  spec.components.schemas.DeliveryStatus = {
+    type: "object",
+    properties: {
+      code: {
+        type: "integer",
+        format: "int32",
+        description: "Status code with <strong>normal HTML</strong>."
+      }
+    }
+  };
+
+  const { markdown } = convert(spec);
+  const codeRow = markdown.match(/<tr><td><code>code<\/code><\/td>[\s\S]*?<\/tr>/)?.[0];
+
+  assert.ok(codeRow);
+  assert.match(codeRow, /Status code with <strong>normal HTML<\/strong>\./);
+  assert.doesNotMatch(codeRow, /See table below/);
+  assert.doesNotMatch(markdown, /#### `code` values/);
+});
+
 test("fragment mode can filter by operationId", () => {
   const { markdown } = convert(createSpec(), {
     mode: "fragment",
