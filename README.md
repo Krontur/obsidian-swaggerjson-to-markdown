@@ -44,6 +44,19 @@ VaultFolder/.obsidian/plugins/swaggerjson-to-markdown/
 
 Then enable the plugin in Obsidian under `Settings -> Community plugins`.
 
+### Install or Update a Local Build
+
+To test changes from the source code, run these commands from the project folder:
+
+```bash
+npm install
+npm run build
+```
+
+Close Obsidian, then copy the newly built `main.js`, together with `manifest.json` and `styles.css`, into the vault plugin folder shown above. Replace the existing files and reopen Obsidian. If testing on another device, transfer the files from this local build rather than downloading an older release.
+
+Regenerate the Markdown after updating: previously generated notes do not update automatically.
+
 ## Basic Usage
 
 1. Right-click a `.json` file in Obsidian.
@@ -270,7 +283,7 @@ One practical workflow is:
 
 ## Errors and Warnings
 
-When Markdown generation fails, Obsidian shows a short notice and opens an error modal with the full details. The modal includes a `Copy details` button so the error can be copied into an issue, chat, or debugging note.
+When Markdown generation fails, Obsidian shows a short notice and opens an error modal with the full details.
 
 Errors can happen when:
 
@@ -287,12 +300,22 @@ Warnings do not stop generation. They are reported in the Obsidian developer con
 - unresolved internal `$ref`;
 - external file `$ref`;
 - remote URL `$ref`;
-- unexpected Swagger/OpenAPI version values.
+- unexpected Swagger/OpenAPI version values;
+- schema details that cannot be fully represented in the documentation tables;
+- authentication requirements or security schemes that are not rendered.
+
+A warning such as `Schema at ... contains information not fully represented by tables; its JSON definition is preserved in the documentation.` means the generator retains the schema definition in a JSON block rather than relying only on a simplified table. This can occur with enums, validation constraints, `additionalProperties`, or composed schemas.
+
+Schema warnings are conservative: a property and its containing schemas can each produce a warning. A high warning count does not mean the same number of conversion failures. Review the generated **Schema definition** blocks for details; generated examples are representative values, not a guarantee that every schema constraint is satisfied.
 
 Recursive internal `$ref` values are not warnings. They are expected in some OpenAPI documents and are rendered as finite links back to the referenced schema.
 
 ## Known Limitations
 
+- OpenAPI 3.0 `nullable: true` and OpenAPI 3.1 type arrays are supported. Nullable types are shown explicitly, for example `string | null`.
+- Tables are not a complete JSON Schema representation. Additional constraints, composition branches, enums, and complex nested definitions are preserved in expandable **Schema definition** JSON blocks, with warnings when a table is incomplete. Generated examples are representative values, not a full JSON Schema validation result.
+- Authentication requirements and security schemes are not rendered. Their presence produces a warning; consult the original specification.
+- Named JSON Schema anchors and advanced reference scopes are not resolved; unresolved references produce warnings.
 - External file `$ref` values are not resolved.
 - Remote URL `$ref` values are not resolved.
 - Automatic XML generation is limited; declared XML examples are preserved and rendered as code.
@@ -302,6 +325,12 @@ Recursive internal `$ref` values are not warnings. They are expected in some Ope
 - Input support is JSON-focused. YAML OpenAPI files are not converted by this plugin.
 
 ## Troubleshooting
+
+### Conversion Fails with `n.startsWith is not a function`
+
+An older build could fail while generating examples for OpenAPI 3.1 type arrays such as `"type": ["string", "null"]`. The current source handles these declarations without treating the array as a string.
+
+Build the current source with `npm run build`, close Obsidian, replace `main.js` in the vault plugin folder, and reopen Obsidian. Replacing only the source files or reopening an existing generated note does not update the installed plugin.
 
 ### Styles Do Not Appear
 
@@ -368,6 +397,37 @@ Run lint:
 ```bash
 npm run lint
 ```
+
+Run the regression suite:
+
+```bash
+npm test
+```
+
+The suite includes a synthetic SpringDoc OpenAPI 3.1 fixture. To additionally test the original local 36-operation, 47-schema regression document without committing its private metadata, set `OPENAPI_REGRESSION_FILE` to its path before running the tests. The optional test checks every operation, response status, and top-level request/response model property.
+
+Plugin workflow tests use an in-memory Obsidian API mock. After building, set `PLUGIN_REGRESSION_BUNDLE` to `./main.js` to run those checks against the actual production bundle instead of an in-memory source build. UI appearance and behavior in a real vault still require manual testing.
+
+## Changelog
+
+### 1.1.4
+
+#### Fixed
+
+- Fixed `startsWith is not a function` during example generation for OpenAPI 3.1 type arrays, including nullable declarations such as `"type": ["string", "null"]`.
+- Unified schema type handling across tables and generated examples, including OpenAPI 3.0 `nullable: true`, arrays, maps, boolean schemas, and schemas without an explicit type.
+- Preserved explicit `null` examples and defaults, parent properties and required fields in flattened object `allOf` schemas, and original definitions for compositions that cannot be safely flattened.
+- Corrected internal `$ref` decoding for JSON Pointer escapes and URI encoding, with controlled errors for malformed references.
+- Removed the runtime PostCSS dependency from the plugin bundle by stubbing its unused style parser; HTML style attribute parsing remains disabled.
+- Removed complete and orphan HTML comment delimiters from rich descriptions before rendering.
+
+#### Added
+
+- Contextual validation errors for malformed schema declarations and metadata containers instead of raw JavaScript type errors.
+- Expandable **Schema definition** JSON blocks for schema details not fully represented by tables, with explicit warnings about rendering limitations.
+- Warnings when authentication definitions are not rendered or a representative example cannot be generated safely for certain advanced constraints.
+- Regression coverage for SpringDoc OpenAPI 3.1 documents, nullable types, schema composition, references, and the plugin's file creation workflow, including optional checks against the production bundle.
+- Local build installation instructions and guidance for interpreting schema warnings.
 
 ## Credits
 

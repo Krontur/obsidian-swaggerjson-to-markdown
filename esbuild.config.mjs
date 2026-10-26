@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from 'node:module';
+import { fileURLToPath } from "node:url";
 
 const banner =
 `/*
@@ -10,6 +11,14 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+const postcssStubPath = fileURLToPath(new URL("./src/converter/shared/postcss-stub.cjs", import.meta.url));
+
+const postcssStubPlugin = {
+	name: "postcss-stub",
+	setup(build) {
+		build.onResolve({ filter: /^postcss$/ }, () => ({ path: postcssStubPath }));
+	},
+};
 
 const context = await esbuild.context({
 	banner: {
@@ -39,6 +48,7 @@ const context = await esbuild.context({
 	treeShaking: true,
 	outfile: "main.js",
 	minify: prod,
+	plugins: [postcssStubPlugin],
 });
 
 if (prod) {

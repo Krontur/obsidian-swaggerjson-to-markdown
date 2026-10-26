@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { validateOpenApiDocument, validateFilterCombination } from "../src/converter/core/openapi-validator.mjs";
 import { generateMarkdown } from "../src/converter/renderer/markdown-generator.mjs";
@@ -168,6 +169,19 @@ test("full mode renders a complete Swagger-style Obsidian document", () => {
   assert.match(markdown, /### Pet/);
   assert.doesNotMatch(markdown, /<script/i);
   assert.doesNotMatch(markdown, /alert\('x'\)/);
+});
+
+test("existing OpenAPI 3.0 Markdown stays byte-for-byte unchanged", () => {
+  // Captured from the working tree before the nullable/union fix; not auto-updated.
+  const baselines = [
+    [{}, "e1e94390aa67cb4f50e2e25fae7834912876e9de46496797008a60d4ca28b9bc"],
+    [{ mode: "fragment", tag: "pets", headingOffset: 2 }, "e7a1a4af7e4d7430ac771644e4dd1ab053655ecab24100ec57b543377b601e94"],
+    [{ useHeadings: false }, "0377d63575aba218d99a6c6bcd890aaec418d5e95818e76c08307560cdc4f576"]
+  ];
+  for (const [options, expected] of baselines) {
+    const { markdown } = convert(createSpec(), options);
+    assert.equal(createHash("sha256").update(markdown).digest("hex"), expected, JSON.stringify(options));
+  }
 });
 
 test("fragment mode can filter by tag and omits unrelated operations and global schemas", () => {

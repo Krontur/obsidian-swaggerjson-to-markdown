@@ -1,5 +1,6 @@
 import { extractRefName, normalizeRef, resolveRef } from "./ref-resolver.mjs";
-import { normalizeComposedSchema, getSchemaDisplayType } from "./schema-normalizer.mjs";
+import { normalizeComposedSchema } from "./schema-normalizer.mjs";
+import { assertSchema, getExampleType, needsSchemaDefinition } from "./schema-types.mjs";
 
 const MAX_REF_DEPTH = 50;
 
@@ -11,16 +12,17 @@ export function getMediaTypeExample(mediaType, context) {
     const resolvedExample = resolveRef(firstExample, context);
     if (resolvedExample?.value !== undefined) return resolvedExample.value;
   }
-  if (mediaType.schema) return buildExample(mediaType.schema, context);
+  if (mediaType.schema !== undefined) return buildExample(mediaType.schema, context);
   return undefined;
 }
 
 export function buildExample(schema, context, state = {}) {
+  assertSchema(schema);
   if ((state.depth ?? 0) > MAX_REF_DEPTH) {
     return {};
   }
 
-  if (schema?.$ref) {
+  if (schema?.$ref !== undefined) {
     const ref = normalizeRef(schema.$ref);
 
     if ((state.refStack ?? []).includes(ref)) {
@@ -44,23 +46,39 @@ export function buildExample(schema, context, state = {}) {
     depth: (state.depth ?? 0) + 1
   };
   const resolved = normalizeComposedSchema(schema, context, state);
+  if (resolved === false) return undefined;
+  if (resolved === true) return {};
   if (!resolved) return undefined;
   if (resolved.example !== undefined) return resolved.example;
   if (resolved.default !== undefined) return resolved.default;
   if (resolved.enum?.length) return resolved.enum[0];
+  if (resolved.const !== undefined) return resolved.const;
+  if (resolved.examples?.length && Array.isArray(resolved.examples)) return resolved.examples[0];
   if (resolved.oneOf?.length) return buildExample(resolved.oneOf[0], context, nextState);
   if (resolved.anyOf?.length) return buildExample(resolved.anyOf[0], context, nextState);
-  const type = getSchemaDisplayType(resolved, context);
-  if (resolved.type === "array") return [buildExample(resolved.items ?? {}, context, nextState)];
-  if (resolved.type === "object" || resolved.properties || resolved.additionalProperties) {
+  if (resolved.allOf?.length) {
+    context.warnings.add("An example was not generated for an allOf intersection that cannot be flattened safely; the schema definition is preserved.");
+    return undefined;
+  }
+  if (needsSchemaDefinition(resolved) && (resolved.not || resolved.if || resolved.prefixItems || resolved.$dynamicRef)) {
+    context.warnings.add("An example was not generated for an unsupported schema constraint; the schema definition is preserved.");
+    return undefined;
+  }
+  const type = getExampleType(resolved);
+  if (type === "null") return null;
+  if (type === "array") {
+    const item = buildExample(resolved.items ?? {}, context, nextState);
+    return item === undefined ? [] : [item];
+  }
+  if (type === "object") {
     const result = {};
     for (const [k, v] of Object.entries(resolved.properties ?? {})) result[k] = buildExample(v, context, nextState);
-    if (!Object.keys(result).length && resolved.additionalProperties) result.additionalProperty = buildExample(resolved.additionalProperties === true ? { type: "string" } : resolved.additionalProperties, context, nextState);
+    if (!Object.keys(result).length && resolved.additionalProperties) result.additionalProperty = buildExample(resolved.additionalProperties === true ? {} : resolved.additionalProperties, context, nextState);
     return result;
   }
-  if (type.startsWith("integer") || type.startsWith("number")) return 0;
-  if (resolved.type === "boolean") return true;
-  if (resolved.type === "string") {
+  if (type === "integer" || type === "number") return 0;
+  if (type === "boolean") return true;
+  if (type === "string") {
     if (resolved.format === "date-time") return "2026-01-01T00:00:00Z";
     if (resolved.format === "date") return "2026-01-01";
     if (resolved.format === "binary") return "file";
@@ -70,6 +88,6 @@ export function buildExample(schema, context, state = {}) {
 }
 
 export function formatExample(example, contentType) {
-  if (contentType?.includes("xml")) return typeof example === "string" ? example : "<!-- XML example not generated -->";
+  if (typeof contentType === "string" && contentType.includes("xml")) return typeof example === "string" ? example : "<!-- XML example not generated -->";
   return JSON.stringify(example, null, 2);
 }

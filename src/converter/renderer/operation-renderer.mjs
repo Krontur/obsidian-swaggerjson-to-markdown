@@ -114,7 +114,7 @@ function formatParameterType(context, parameter) {
     return "file";
   }
 
-  if (parameter.schema) {
+  if (parameter.schema !== undefined) {
     return formatSchemaType(parameter.schema, context);
   }
 
@@ -123,14 +123,12 @@ function formatParameterType(context, parameter) {
     return formatSchemaType(firstMediaType?.schema ?? {}, context);
   }
 
-  const type = parameter.type ?? "object";
-  const format = parameter.format ? `($${parameter.format})` : "";
-
-  if (parameter.type === "array" && parameter.items) {
-    return `array[${formatSchemaType(parameter.items, context)}]`;
-  }
-
-  return `${type}${format}`;
+  return formatSchemaType({
+    type: parameter.type ?? "object",
+    format: parameter.format,
+    items: parameter.items,
+    nullable: parameter.nullable
+  }, context);
 }
 
 function renderRequestBody(context, operation) {
@@ -171,7 +169,7 @@ function renderRequestBody(context, operation) {
     ?.map((parameter) => resolveRef(parameter, context))
     .find((parameter) => parameter.in === "body");
 
-  if (bodyParameter?.schema) {
+  if (bodyParameter?.schema !== undefined) {
     out.push(renderSemanticHeading(context, "section", "Request Body", "api-section api-section-request"));
     out.push("");
 
@@ -263,7 +261,7 @@ function renderResponseDetail(context, operation, statusCode, response) {
       titlePrefix: "Example Value - "
     }));
 
-    if (mediaType?.schema) {
+    if (mediaType?.schema !== undefined) {
       out.push(renderSemanticHeading(context, "subsection", "Model", "api-model-title"));
       out.push("");
       out.push(renderSchemaPropertiesTable(context, mediaType.schema));
@@ -279,7 +277,7 @@ function getResponseContentEntries(context, operation, response) {
     return Object.entries(response.content);
   }
 
-  if (response.schema) {
+  if (response.schema !== undefined) {
     const contentTypes = operation.produces ?? context.spec.produces ?? ["application/json"];
     return contentTypes.map((contentType) => [
       contentType,
@@ -336,7 +334,7 @@ function collectMediaTypeExamples(context, mediaType, fallbackSchema) {
     return out;
   }
 
-  if (fallbackSchema) {
+  if (fallbackSchema !== undefined) {
     const generatedExample = buildExample(fallbackSchema, context);
 
     if (generatedExample !== undefined) {
@@ -418,7 +416,7 @@ function hasDetailedResponseDescription(value) {
 
 function renderExampleWithHeading(context, title, example, contentType) {
   const isEmptyExample = example === "";
-  const language = isEmptyExample ? "text" : (contentType?.includes("xml") ? "xml" : "json");
+  const language = isEmptyExample ? "text" : (typeof contentType === "string" && contentType.includes("xml") ? "xml" : "json");
   const formattedExample = isEmptyExample ? "(empty)" : formatExample(example, contentType);
 
   if (context.options.useHeadings) {

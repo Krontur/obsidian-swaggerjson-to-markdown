@@ -448,12 +448,6 @@ class GenerationErrorModal extends Modal {
 
 		new Setting(contentEl)
 			.addButton((button) => button
-				.setButtonText("Copy details")
-				.onClick(() => {
-					void navigator.clipboard.writeText(message);
-					new Notice("Error details copied");
-				}))
-			.addButton((button) => button
 				.setButtonText("Close")
 				.setCta()
 				.onClick(() => this.close()));

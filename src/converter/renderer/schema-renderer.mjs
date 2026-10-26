@@ -1,6 +1,7 @@
 import { normalizeComposedSchema, formatSchemaType, getSchemaDisplayType } from "../core/schema-normalizer.mjs";
 import { extractRefName, getRefAnchor, normalizeRef, resolveRef } from "../core/ref-resolver.mjs";
 import { buildExample, formatExample } from "../core/example-generator.mjs";
+import { getSchemaTypes, needsSchemaDefinition } from "../core/schema-types.mjs";
 import {
   escapeHtml,
   escapeHtmlAttribute,
@@ -37,13 +38,13 @@ export function renderSchemas(context, renderMode) {
     out.push("");
     out.push(`<div class="api-schema-card">`);
 
-    if (resolvedSchema.description) {
+    if (resolvedSchema?.description) {
       out.push(renderDescriptionBlock("api-description", resolvedSchema.description));
     }
 
     out.push(renderContentType("Type", getSchemaDisplayType(resolvedSchema, context)));
     out.push("");
-    out.push(renderSchemaPropertiesTable(context, resolvedSchema, renderState));
+    out.push(renderSchemaPropertiesTable(context, schema, renderState));
 
     const example = buildExample(resolvedSchema, context, renderState);
 
@@ -68,15 +69,24 @@ export function renderSchemaPropertiesTable(context, schema, state = {}) {
   const resolvedSchema = normalizeComposedSchema(schema, context, state);
   const tableState = getSchemaTableState(schema, state);
 
-  if (!resolvedSchema) {
+  if (resolvedSchema === undefined) {
     return "";
   }
 
-  if (resolvedSchema.type === "array") {
+  const definition = renderSchemaDefinitions(schema, context);
+  const types = getSchemaTypes(resolvedSchema);
+  if (types.includes("array")) {
+    const typeLabel = types.length > 1 ? `<div class="api-primitive-schema"><code>${escapeHtml(formatSchemaType(schema, context))}</code></div>\n` : "";
+    if ((state.depth ?? 0) > 50) {
+      context.warnings.add("Schema table rendering reached its depth limit; a reference is shown instead.");
+      return `<div class="api-primitive-schema"><code>${escapeHtml(formatSchemaType(schema, context))}</code></div>`;
+    }
     return [
+      ...(typeLabel ? [typeLabel] : []),
       `<div class="api-array-label">Array of:</div>`,
       "",
-      renderSchemaPropertiesTable(context, resolvedSchema.items ?? {}, tableState)
+      renderSchemaPropertiesTable(context, resolvedSchema.items ?? {}, { ...tableState, depth: (state.depth ?? 0) + 1 }),
+      ...(definition ? [definition] : [])
     ].join("\n");
   }
 
@@ -86,7 +96,8 @@ export function renderSchemaPropertiesTable(context, schema, state = {}) {
   if (!Object.keys(properties).length) {
     return [
       `<div class="api-primitive-schema"><code>${escapeHtml(formatSchemaType(resolvedSchema, context))}</code></div>`,
-      ""
+      "",
+      ...(definition ? [definition] : [])
     ].join("\n");
   }
 
@@ -108,7 +119,7 @@ export function renderSchemaPropertiesTable(context, schema, state = {}) {
   const rows = propertyEntries.map(({ propertyName, propertySchema, recursiveRef, descriptionDetails }) => {
     return [
       `<code>${escapeHtml(propertyName)}</code>`,
-      recursiveRef ? renderRefLink(recursiveRef) : `<code>${escapeHtml(formatSchemaType(propertySchema, context))}</code>`,
+      recursiveRef ? renderRecursiveType(propertySchema, recursiveRef, context) : `<code>${escapeHtml(formatSchemaType(propertySchema, context))}</code>`,
       required.has(propertyName) ? `<span class="api-required">yes</span>` : "no",
       renderRichText(descriptionDetails.inlineDescription)
     ];
@@ -129,10 +140,12 @@ export function renderSchemaPropertiesTable(context, schema, state = {}) {
     .filter(Boolean);
 
   return [
+    ...(types.length > 1 ? [`<div class="api-primitive-schema"><code>${escapeHtml(formatSchemaType(schema, context))}</code></div>`] : []),
     renderTable(["Property", "Type", "Required", "Description"], rows, "api-table api-schema-table"),
     "",
     ...detailBlocks,
-    ""
+    "",
+    ...(definition ? [definition] : [])
   ].join("\n");
 }
 
@@ -141,11 +154,11 @@ function getSchemas(spec) {
 }
 
 function getSchemaDefinitionRef(context, schemaName) {
-  if (context.spec.components?.schemas?.[schemaName]) {
-    return normalizeRef(`#/components/schemas/${schemaName}`);
+  if (context.spec.components?.schemas?.[schemaName] !== undefined) {
+    return normalizeRef(`#/components/schemas/${escapePointerToken(schemaName)}`);
   }
 
-  return normalizeRef(`#/definitions/${schemaName}`);
+  return normalizeRef(`#/definitions/${escapePointerToken(schemaName)}`);
 }
 
 function getSchemaTableState(schema, state) {
@@ -172,7 +185,7 @@ function getRecursivePropertyRef(context, schema, state) {
     return schemaRefCreatesCycle(context, directRef, [...(state.refStack ?? []), directRef]) ? directRef : null;
   }
 
-  if (schema?.type === "array") {
+  if (getSchemaTypes(schema).includes("array")) {
     return getRecursivePropertyRef(context, schema.items ?? {}, state);
   }
 
@@ -228,6 +241,37 @@ function schemaContainsRefCycle(context, schema, refStack, seen) {
 
 function renderRefLink(ref) {
   return `<a href="${escapeHtmlAttribute(getRefAnchor(ref))}"><code>${escapeHtml(extractRefName(ref))}</code></a>`;
+}
+
+function renderRecursiveType(schema, ref, context) {
+  if (schema.$ref !== undefined) return `${renderRefLink(ref)}${schema.nullable === true ? " | null" : ""}`;
+  if (getSchemaTypes(schema).length > 1) return `<code>${escapeHtml(formatSchemaType(schema, context))}</code> (${renderRefLink(ref)})`;
+  return renderRefLink(ref);
+}
+
+function escapePointerToken(value) {
+  return encodeURIComponent(value.replace(/~/g, "~0").replace(/\//g, "~1"));
+}
+
+function renderSchemaDefinitions(schema, context) {
+  const definitions = [];
+  const seen = new Set();
+  let current = schema;
+  while (current !== undefined && !seen.has(current)) {
+    seen.add(current);
+    if (needsSchemaDefinition(current)) {
+      definitions.push([
+        "<details><summary>Schema definition (additional constraints)</summary>",
+        "",
+        renderExampleBlock("", JSON.stringify(current, null, 2), "json"),
+        "",
+        "</details>"
+      ].join("\n"));
+    }
+    if (current?.$ref === undefined) break;
+    current = resolveRef(current, context);
+  }
+  return definitions.join("\n\n");
 }
 
 function compactJoin(parts) {

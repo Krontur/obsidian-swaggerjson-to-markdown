@@ -167,6 +167,7 @@ function sanitizeHtmlDescription(value) {
     allowedSchemes: ["http", "https", "mailto"],
 
     disallowedTagsMode: "discard",
+    parseStyleAttributes: false,
 
     transformTags: {
       a: transformLinkTag,
